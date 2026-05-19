@@ -1,250 +1,252 @@
-let videoElement, hands, camera, predictions = [];
-let gameState = 'PLAYING'; 
+// ==========================================
+// 全域變數與 MediaPipe 設定
+// ==========================================
+let videoElement;
+let hands;
+let camera;
+let predictions = [];
+
+let gameState = 'PLAYING'; // 狀態：'PLAYING', 'RESULT', 'GAME_OVER'
 let playerChoice = "等待手勢...";
 let computerChoice = "";
 let gameResult = "";
 
+// 加分項目：防誤判計時器
 let actionTimer = 0;
-let requiredTime = 45; 
+let requiredTime = 40; 
 let currentDetectedAction = "NONE"; 
 
 const choices = ["石頭", "剪刀", "布"];
 
-// 輕紫色系調色盤
-const theme = {
-    bg: [243, 229, 245, 180], // 淺紫半透明
-    accent: '#9d81ba',        // 主色紫
-    text: '#4a148c',          // 深紫文字
-    white: '#ffffff',
-    progressOk: '#81c784',    // 柔和綠
-    progressQuit: '#e57373'   // 柔和紅
-};
-
-let btnRock, btnScissors, btnPaper, btnThumbUp, btnThumbDown;
+// Y2K 夢幻美學色調
+const colorLavender = '#cdb4db';
+const colorLightBlue = '#bde0fe';
+const colorDarkBg = '#2a1b3d';
 
 function setup() {
-    let canvasWidth = min(windowWidth - 40, 420);
-    let canvasHeight = min(windowHeight - 200, 420);
+    // 針對手機直式螢幕優化畫布比例
+    let canvasWidth = min(windowWidth - 30, 400);
+    let canvasHeight = min(windowHeight - 120, 420);
     let canvas = createCanvas(canvasWidth, canvasHeight);
     canvas.parent('canvas-container');
     
     videoElement = document.getElementById('webcam');
 
-    // AI 初始化
+    // 初始化 MediaPipe Hands 辨識引擎
     hands = new Hands({
         locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
     });
+
     hands.setOptions({
         maxNumHands: 1,
         modelComplexity: 1,
         minDetectionConfidence: 0.7,
         minTrackingConfidence: 0.5
     });
+
     hands.onResults(onHandsResults);
 
+    // 啟動行動端/電腦鏡頭
     camera = new Camera(videoElement, {
-        onFrame: async () => { await hands.send({ image: videoElement }); },
-        width: 420, height: 420
+        onFrame: async () => {
+            await hands.send({ image: videoElement });
+        },
+        width: 400,
+        height: 420
     });
     camera.start();
 
-    createModernButtons();
+    textSize(18);
+    textAlign(CENTER, CENTER);
 }
 
 function draw() {
-    // 繪製背景視訊（鏡像）
-    push();
+    // 1. 繪製實體相機影像（並進行鏡像翻轉，操作更直覺）
     translate(width, 0);
     scale(-1, 1);
     image(videoElement, 0, 0, width, height);
-    pop();
+    translate(width, 0);
+    scale(-1, 1); // 還原座標系
 
-    // 覆蓋現代感淺紫遮罩（營造高質感氛圍）
-    noStroke();
-    fill(theme.bg);
+    // 2. 疊加 Y2K 濾鏡：半透明浪漫深紫遮罩 + 薰衣草紫網格線
+    fill(42, 27, 61, 180); // 讓背景帶有透明感紫色
     rect(0, 0, width, height);
+    
+    stroke(205, 180, 219, 30);
+    strokeWeight(1);
+    for(let i = 0; i < width; i += 25) line(i, 0, i, height);
+    for(let j = 0; j < height; j += 25) line(0, j, width, j);
+    noStroke();
 
+    // 3. 根據狀態機繪製 UI 畫面
     if (gameState === 'PLAYING') {
-        showBtns(btnRock, btnScissors, btnPaper);
-        hideBtns(btnThumbUp, btnThumbDown);
-        drawPlayingUI();
+        drawPlayingScreen();
     } else if (gameState === 'RESULT') {
-        hideBtns(btnRock, btnScissors, btnPaper);
-        showBtns(btnThumbUp, btnThumbDown);
-        drawResultUI();
-        handleLogic(); 
+        drawResultScreen();
     } else if (gameState === 'GAME_OVER') {
-        hideBtns(btnRock, btnScissors, btnPaper, btnThumbUp, btnThumbDown);
-        drawGameOverUI();
+        drawGameOverScreen();
     }
 
-    drawHandMarkers();
+    // 4. 實時繪製手部綠色特徵追蹤點（視覺回饋加分項）
+    drawHandLandmarks();
 }
 
+// ==========================================
+// MediaPipe AI 手勢辨識回傳結果
+// ==========================================
 function onHandsResults(results) {
     predictions = results.multiHandLandmarks;
+
     if (predictions && predictions.length > 0) {
-        let lm = predictions[0];
-        if (gameState === 'PLAYING') detectRPS(lm);
-        else if (gameState === 'RESULT') detectThumb(lm);
-    }
-}
+        let landmarks = predictions[0];
 
-// 辨識邏輯保持不變 (👍/👎 改良)
-function detectRPS(lm) {
-    let iO = lm[8].y < lm[6].y, mO = lm[12].y < lm[10].y, rO = lm[16].y < lm[14].y, pO = lm[20].y < lm[18].y;
-    if (iO && mO && rO && pO) { playerChoice = "布"; execute(); }
-    else if (iO && mO && !rO && !pO) { playerChoice = "剪刀"; execute(); }
-    else if (!iO && !mO && !rO && !pO) { playerChoice = "石頭"; execute(); }
-}
-
-function detectThumb(lm) {
-    let closed = lm[8].y > lm[6].y && lm[12].y > lm[10].y && lm[16].y > lm[14].y && lm[20].y > lm[18].y;
-    if (closed) {
-        if (lm[4].y < lm[2].y) currentDetectedAction = "CONTINUE";
-        else if (lm[4].y > lm[2].y) currentDetectedAction = "QUIT";
-    }
-}
-
-function handleLogic() {
-    if (currentDetectedAction !== "NONE") {
-        actionTimer++;
-        if (actionTimer >= requiredTime) {
-            if (currentDetectedAction === "CONTINUE") { gameState = 'PLAYING'; playerChoice = "等待出拳..."; }
-            else { gameState = 'GAME_OVER'; }
-            actionTimer = 0; currentDetectedAction = "NONE";
+        if (gameState === 'PLAYING') {
+            detectRPS(landmarks);
+        } else if (gameState === 'RESULT') {
+            detectThumbAction(landmarks); // 核心考題：判斷 👍 👎
+        }
+    } else {
+        if (gameState === 'RESULT') {
+            currentDetectedAction = "NONE";
+            actionTimer = 0;
         }
     }
 }
 
-function execute() {
-    computerChoice = random(choices);
-    if (playerChoice === computerChoice) gameResult = "平手";
-    else if ((playerChoice === "石頭" && computerChoice === "剪刀") || (playerChoice === "剪刀" && computerChoice === "布") || (playerChoice === "布" && computerChoice === "石頭")) gameResult = "你贏了 🎉";
-    else gameResult = "你輸了 😢";
-    gameState = 'RESULT'; actionTimer = 0; currentDetectedAction = "NONE";
+// 辨識剪刀石頭布
+function detectRPS(landmarks) {
+    let indexOpen = landmarks[8].y < landmarks[6].y;
+    let middleOpen = landmarks[12].y < landmarks[10].y;
+    let ringOpen = landmarks[16].y < landmarks[14].y;
+    let pinkyOpen = landmarks[20].y < landmarks[18].y;
+
+    if (indexOpen && middleOpen && ringOpen && pinkyOpen) {
+        playerChoice = "布"; executeRPS();
+    } else if (indexOpen && middleOpen && !ringOpen && !pinkyOpen) {
+        playerChoice = "剪刀"; executeRPS();
+    } else if (!indexOpen && !middleOpen && !ringOpen && !pinkyOpen) {
+        playerChoice = "石頭"; executeRPS();
+    }
 }
 
-// UI 渲染 (現代極簡美化)
-function drawPlayingUI() {
-    fill(theme.text);
-    textStyle(BOLD);
+// 【考題核心修改】：辨識大拇指朝上與朝下
+function detectThumbAction(landmarks) {
+    // 確保其餘四指握拳
+    let indexClosed = landmarks[8].y > landmarks[6].y;
+    let middleClosed = landmarks[12].y > landmarks[10].y;
+    let ringClosed = landmarks[16].y > landmarks[14].y;
+    let pinkyClosed = landmarks[20].y > landmarks[18].y;
+
+    if (indexClosed && middleClosed && ringClosed && pinkyClosed) {
+        // 👍 大拇指尖(4)高於關節(2) -> 繼續遊戲
+        if (landmarks[4].y < landmarks[2].y) {
+            if (currentDetectedAction === "CONTINUE") actionTimer++;
+            else { currentDetectedAction = "CONTINUE"; actionTimer = 0; }
+        } 
+        // 👎 大拇指尖(4)低於關節(2) -> 結束遊戲
+        else if (landmarks[4].y > landmarks[2].y) {
+            if (currentDetectedAction === "QUIT") actionTimer++;
+            else { currentDetectedAction = "QUIT"; actionTimer = 0; }
+        }
+    } else {
+        currentDetectedAction = "NONE";
+        actionTimer = 0;
+    }
+
+    // 撐滿 2 秒（40幀）觸發狀態切換
+    if (actionTimer >= requiredTime) {
+        if (currentDetectedAction === "CONTINUE") {
+            gameState = 'PLAYING';
+            playerChoice = "等待手勢...";
+        } else if (currentDetectedAction === "QUIT") {
+            gameState = 'GAME_OVER';
+        }
+        actionTimer = 0;
+        currentDetectedAction = "NONE";
+    }
+}
+
+function executeRPS() {
+    computerChoice = random(choices);
+    if (playerChoice === computerChoice) gameResult = "平手！";
+    else if (
+        (playerChoice === "石頭" && computerChoice === "剪刀") ||
+        (playerChoice === "剪刀" && computerChoice === "布") ||
+        (playerChoice === "布" && computerChoice === "石頭")
+    ) {
+        gameResult = "你贏了！🎉";
+    } else {
+        gameResult = "你輸了...😢";
+    }
+    gameState = 'RESULT';
+    actionTimer = 0;
+}
+
+// ==========================================
+// 介面渲染 UI Sub-screens
+// ==========================================
+function drawPlayingScreen() {
+    fill(colorLavender);
     textSize(24);
-    text("AI 猜拳挑戰", width / 2, 60);
-    
-    textStyle(NORMAL);
+    text("⭐ AI 猜拳小遊戲 ⭐", width / 2, 50);
+    fill('#ffffff');
     textSize(14);
-    fill(80);
-    text("請對鏡頭比出 剪刀、石頭、布", width / 2, 95);
-    
-    fill(theme.accent);
-    textSize(20);
+    text("請對著鏡頭比出：剪刀、石頭 或 布", width / 2, 100);
+    fill(colorLightBlue);
+    textSize(22);
     text(playerChoice, width / 2, height / 2);
 }
 
-function drawResultUI() {
-    fill(80);
+function drawResultScreen() {
+    fill('#ffffff');
+    textSize(14);
+    text(`你出了: ${playerChoice}  vs  電腦: ${computerChoice}`, width / 2, 50);
+    textSize(32);
+    fill('#ffb703');
+    text(gameResult, width / 2, 110);
+
+    fill(colorLavender);
     textSize(16);
-    text(`玩家: ${playerChoice}  /  電腦: ${computerChoice}`, width / 2, 60);
-    
-    textStyle(BOLD);
-    textSize(36);
-    fill(theme.text);
-    text(gameResult, width / 2, 120);
+    text("【新版手勢選單控制】", width / 2, 180);
+    textSize(13);
+    fill('#ffffff');
+    text("👍 大拇指朝上：再玩一局\n👎 大拇指朝下：結束遊戲", width / 2, 215);
 
-    textStyle(NORMAL);
-    textSize(15);
-    fill(100);
-    text("下一步？請比出 👍 或 👎", width / 2, 190);
-
+    // ⭐ 加分項目：進度條視覺回饋
     if (currentDetectedAction !== "NONE" && actionTimer > 0) {
-        let p = map(actionTimer, 0, requiredTime, 0, 200);
-        let c = currentDetectedAction === "CONTINUE" ? theme.progressOk : theme.progressQuit;
-        
-        fill(c);
+        let progress = map(actionTimer, 0, requiredTime, 0, 180);
+        fill(currentDetectedAction === "CONTINUE" ? '#b5e2fa' : '#ffb3c1');
         textSize(14);
-        text(currentDetectedAction === "CONTINUE" ? "繼續遊戲..." : "退出中...", width / 2, 240);
+        text(currentDetectedAction === "CONTINUE" ? "👍 偵測到大拇指朝上..." : "👎 偵測到大拇指朝下...", width / 2, 280);
 
-        stroke(255);
-        strokeWeight(3);
-        fill(240);
-        rect(width / 2 - 100, 260, 200, 10, 5);
+        noFill();
+        stroke(colorLavender);
+        strokeWeight(2);
+        rect(width / 2 - 90, 310, 180, 14, 7);
         noStroke();
-        fill(c);
-        rect(width / 2 - 100, 260, p, 10, 5);
+        fill(currentDetectedAction === "CONTINUE" ? '#b5e2fa' : '#ffb3c1');
+        rect(width / 2 - 90, 310, progress, 14, 7);
     }
 }
 
-function drawGameOverUI() {
-    fill(theme.text);
+function drawGameOverScreen() {
+    fill(colorLavender);
     textSize(32);
-    textStyle(BOLD);
     text("遊戲結束", width / 2, height / 2 - 20);
     textSize(14);
-    textStyle(NORMAL);
-    fill(100);
-    text("手勢辨識改良成功 · 輕盈紫介面", width / 2, height / 2 + 25);
+    fill('#ffffff');
+    text("實體相機串接與手勢改進成功！", width / 2, height / 2 + 30);
 }
 
-function drawHandMarkers() {
+function drawHandLandmarks() {
     if (predictions && predictions.length > 0) {
-        let lm = predictions[0];
-        for (let i = 0; i < lm.length; i++) {
-            fill(255);
-            stroke(theme.accent);
-            strokeWeight(1);
-            ellipse(lm[i].x * width, lm[i].y * height, 5, 5);
+        let landmarks = predictions[0];
+        noStroke();
+        fill(189, 224, 254); // 用輕藍色點點標註手部關節
+        for (let i = 0; i < landmarks.length; i++) {
+            let x = landmarks[i].x * width;
+            let y = landmarks[i].y * height;
+            ellipse(x, y, 6, 6);
         }
     }
-}
-
-// 按鈕現代化樣式美化
-function createModernButtons() {
-    btnRock = createButton('✊ 石頭');
-    btnScissors = createButton('✌️ 剪刀');
-    btnPaper = createButton('✋ 布');
-    btnThumbUp = createButton('👍 繼續');
-    btnThumbDown = createButton('👎 結束');
-
-    let btns = [btnRock, btnScissors, btnPaper, btnThumbUp, btnThumbDown];
-    btns.forEach(b => {
-        b.style('background-color', '#ffffff');
-        b.style('color', '#5e35b1');
-        b.style('border', 'none');
-        b.style('border-radius', '50px');
-        b.style('padding', '12px 20px');
-        b.style('font-weight', '600');
-        b.style('box-shadow', '0 4px 10px rgba(0,0,0,0.05)');
-        b.hide();
-    });
-
-    btnRock.mousePressed(() => { playerChoice = "石頭"; execute(); });
-    btnScissors.mousePressed(() => { playerChoice = "剪刀"; execute(); });
-    btnPaper.mousePressed(() => { playerChoice = "布"; execute(); });
-    btnThumbUp.mousePressed(() => { currentDetectedAction = "CONTINUE"; });
-    btnThumbDown.mousePressed(() => { currentDetectedAction = "QUIT"; });
-
-    posBtns();
-}
-
-function posBtns() {
-    let r = document.getElementById('canvas-container').getBoundingClientRect();
-    let y = r.bottom + 20;
-    btnRock.position(r.left + (r.width * 0.05), y);
-    btnScissors.position(r.left + (r.width * 0.38), y);
-    btnPaper.position(r.left + (r.width * 0.72), y);
-    btnThumbUp.position(r.left + (r.width * 0.15), y);
-    btnThumbDown.position(r.left + (r.width * 0.55), y);
-}
-
-function showBtns(...bs) { bs.forEach(b => b.show()); }
-function hideBtns(...bs) { bs.forEach(b => b.hide()); }
-
-function mouseReleased() { if (gameState === 'RESULT') { currentDetectedAction = "NONE"; actionTimer = 0; } }
-
-function windowResized() {
-    let canvasWidth = min(windowWidth - 40, 420);
-    let canvasHeight = min(windowHeight - 200, 420);
-    resizeCanvas(canvasWidth, canvasHeight);
-    posBtns();
 }

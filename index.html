@@ -3,54 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 手勢辨識猜拳遊戲 - 現代輕紫版</title>
+    <title>AI 猜拳小遊戲 - Y2K 手機實體相機版</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <style>
-        :root {
-            --primary-purple: #9d81ba;
-            --light-purple: #f3e5f5;
-            --deep-purple: #5e35b1;
-            --white: #ffffff;
-        }
-
         body {
             margin: 0;
             padding: 0;
-            /* 現代感的淺紫漸層背景 */
-            background: linear-gradient(135deg, #f3e5f5 0%, #e8eaf6 100%);
+            background-color: #2a1b3d; /* Y2K 深紫背景 */
             display: flex;
-            flex-direction: column;
             justify-content: center;
             align-items: center;
-            min-height: 100vh;
-            color: var(--deep-purple);
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            color: white;
+            font-family: sans-serif;
             overflow: hidden;
         }
-
         #canvas-container {
             position: relative;
-            /* 毛玻璃邊框與陰影 */
-            background: rgba(255, 255, 255, 0.4);
-            border: 4px solid var(--white);
-            box-shadow: 0 15px 35px rgba(157, 129, 186, 0.2);
-            border-radius: 24px;
+            box-shadow: 0 4px 25px rgba(205, 180, 219, 0.4);
+            border-radius: 16px;
             overflow: hidden;
-            line-height: 0;
         }
-
+        /* 隱藏原始 HTML video 標籤，因為我們要用 p5.js 把它畫得美美的 */
         #webcam {
             display: none;
-        }
-
-        /* 按鈕容器樣式美化 */
-        .button-group {
-            margin-top: 25px;
-            display: flex;
-            gap: 12px;
-            justify-content: center;
         }
     </style>
 </head>
