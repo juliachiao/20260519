@@ -1,172 +1,150 @@
 // ==========================================
-// 全域變數與 MediaPipe 設定
+// 全域變數定義
 // ==========================================
-let videoElement;
-let hands;
-let camera;
-let predictions = [];
-
-let gameState = 'PLAYING'; // 'PLAYING', 'RESULT', 'GAME_OVER'
+let gameState = 'PLAYING'; 
 let playerChoice = "等待出拳...";
 let computerChoice = "";
 let gameResult = "";
 
-// 防誤判計時器（加分項目）
 let actionTimer = 0;
-let requiredTime = 45; // 穩定維持手勢約 1.5 秒
+let requiredTime = 40; 
 let currentDetectedAction = "NONE"; 
 
 const choices = ["石頭", "剪刀", "布"];
 
-// Y2K 夢幻美學色彩
+// Y2K 夢幻色調定義
 const colorLavender = '#cdb4db';
 const colorLightBlue = '#bde0fe';
+const colorDarkBg = '#2a1b3d'; 
 
+let btnRock, btnScissors, btnPaper;
+let btnThumbUp, btnThumbDown;
+
+// ==========================================
+// p5.js 核心生命週期
+// ==========================================
 function setup() {
-    // 建立最適合手機與電腦網頁的畫布比例
-    let canvasWidth = min(windowWidth - 20, 640);
-    let canvasHeight = min(windowHeight - 40, 480);
+    // 依據手機螢幕動態調整畫布大小
+    let canvasWidth = min(windowWidth - 30, 400); // 針對手機直式螢幕優化寬度
+    let canvasHeight = min(windowHeight - 160, 400);
     let canvas = createCanvas(canvasWidth, canvasHeight);
     canvas.parent('canvas-container');
-
-    videoElement = document.getElementById('webcam');
-
-    // 初始化 MediaPipe Hands 辨識核心
-    hands = new Hands({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-    });
-
-    hands.setOptions({
-        maxNumHands: 1,
-        modelComplexity: 1,
-        minDetectionConfidence: 0.75, // 提高信心度，幾乎不誤判 (加分項)
-        minTrackingConfidence: 0.6
-    });
-
-    hands.onResults(onHandsResults);
-
-    // 啟動實體相機串流
-    camera = new Camera(videoElement, {
-        onFrame: async () => {
-            await hands.send({ image: videoElement });
-        },
-        width: 640,
-        height: 480
-    });
-    camera.start();
-
-    textSize(20);
+    
+    // 建立觸控按鈕
+    createGameButtons();
+    
+    textSize(18);
     textAlign(CENTER, CENTER);
 }
 
 function draw() {
-    // 1. 鏡像繪製相機視訊，讓手機操作更直覺
-    translate(width, 0);
-    scale(-1, 1);
-    image(videoElement, 0, 0, width, height);
-    translate(width, 0);
-    scale(-1, 1);
+    background(colorDarkBg);
 
-    // 2. 疊加 Y2K 半透明薰衣草紫微光遮罩，優化文字可讀性
-    background(42, 27, 61, 180);
-
-    // 3. 繪製 Y2K 霓虹網格線
-    stroke(205, 180, 219, 30);
+    // Y2K 復古未來感網格線
+    stroke(205, 180, 219, 35);
     strokeWeight(1);
-    for(let i = 0; i < width; i += 30) line(i, 0, i, height);
-    for(let j = 0; j < height; j += 30) line(0, j, width, j);
+    for(let i = 0; i < width; i += 25) line(i, 0, i, height);
+    for(let j = 0; j < height; j += 25) line(0, j, width, j);
     noStroke();
 
-    // 根據狀態渲染 UI
     if (gameState === 'PLAYING') {
+        showButtons(btnRock, btnScissors, btnPaper);
+        hideButtons(btnThumbUp, btnThumbDown);
         drawPlayingScreen();
     } else if (gameState === 'RESULT') {
+        hideButtons(btnRock, btnScissors, btnPaper);
+        showButtons(btnThumbUp, btnThumbDown);
         drawResultScreen();
+        handleSimulatedTimer(); 
     } else if (gameState === 'GAME_OVER') {
+        hideButtons(btnRock, btnScissors, btnPaper, btnThumbUp, btnThumbDown);
         drawGameOverScreen();
     }
 
-    // 繪製手部關節點 (視覺回饋，讓老師看見科技感)
-    drawHandLandmarks();
+    // 頁尾
+    fill(205, 180, 219, 120);
+    textSize(10);
+    text("【夢幻 Y2K 環境模擬版】已解耦硬體相機", width / 2, height - 15);
 }
 
 // ==========================================
-// MediaPipe 實體手勢偵測邏輯
+// 介面按鈕建立與自訂樣式
 // ==========================================
-function onHandsResults(results) {
-    predictions = results.multiHandLandmarks;
+function createGameButtons() {
+    btnRock     = createButton('✊ 石頭').mousePressed(() => { playerChoice = "石頭"; executeRPS(); });
+    btnScissors = createButton('✌️ 剪刀').mousePressed(() => { playerChoice = "剪刀"; executeRPS(); });
+    btnPaper    = createButton('✋ 布').mousePressed(() => { playerChoice = "布"; executeRPS(); });
+    
+    // 長按模擬手勢
+    btnThumbUp   = createButton('👍 繼續 (按住)').mousePressed(() => { currentDetectedAction = "CONTINUE"; });
+    btnThumbDown = createButton('👎 結束 (按住)').mousePressed(() => { currentDetectedAction = "QUIT"; });
 
-    if (predictions && predictions.length > 0) {
-        let landmarks = predictions[0];
+    let allButtons = [btnRock, btnScissors, btnPaper, btnThumbUp, btnThumbDown];
+    allButtons.forEach(btn => {
+        btn.style('background-color', colorLightBlue);
+        btn.style('color', '#2a1b3d');
+        btn.style('border', '2px solid #cdb4db');
+        btn.style('border-radius', '12px');
+        btn.style('padding', '8px 12px');
+        btn.style('font-weight', 'bold');
+        btn.style('font-size', '14px');
+        btn.style('box-shadow', '2px 2px 0px #cdb4db');
+        btn.hide(); 
+    });
 
-        if (gameState === 'PLAYING') {
-            detectRealRPS(landmarks);
-        } else if (gameState === 'RESULT') {
-            detectRealThumbAction(landmarks);
-        }
-    } else {
+    positionButtons();
+}
+
+function positionButtons() {
+    // 取得畫布在網頁上的絕對坐標，讓按鈕完美對齊在畫布下方
+    let canvasEl = document.getElementById('canvas-container');
+    let rect = canvasEl.getBoundingClientRect();
+    
+    let centerY = rect.bottom + 15;
+    
+    // 依據畫布寬度動態分配按鈕間距
+    btnRock.position(rect.left + (rect.width * 0.1), centerY);
+    btnScissors.position(rect.left + (rect.width * 0.4), centerY);
+    btnPaper.position(rect.left + (rect.width * 0.7), centerY);
+    
+    btnThumbUp.position(rect.left + (rect.width * 0.15), centerY);
+    btnThumbDown.position(rect.left + (rect.width * 0.55), centerY);
+}
+
+function showButtons(...btns) { btns.forEach(b => b.show()); }
+function hideButtons(...btns) { btns.forEach(b => b.hide()); }
+
+function mouseReleased() {
+    if (gameState === 'RESULT') {
         currentDetectedAction = "NONE";
         actionTimer = 0;
     }
 }
 
-// 實體辨識：剪刀石頭布
-function detectRealRPS(landmarks) {
-    let indexOpen  = landmarks[8].y < landmarks[6].y;
-    let middleOpen = landmarks[12].y < landmarks[10].y;
-    let ringOpen   = landmarks[16].y < landmarks[14].y;
-    let pinkyOpen  = landmarks[20].y < landmarks[18].y;
-
-    if (indexOpen && middleOpen && ringOpen && pinkyOpen) {
-        playerChoice = "布";
-        executeRPS();
-    } else if (indexOpen && middleOpen && !ringOpen && !pinkyOpen) {
-        playerChoice = "剪刀";
-        executeRPS();
-    } else if (!indexOpen && !middleOpen && !ringOpen && !pinkyOpen) {
-        playerChoice = "石頭";
-        executeRPS();
-    }
-}
-
-// 【考題核心方案 A】實體辨識：大拇指朝上/朝下
-function detectRealThumbAction(landmarks) {
-    let indexClosed  = landmarks[8].y > landmarks[6].y;
-    let middleClosed = landmarks[12].y > landmarks[10].y;
-    let ringClosed   = landmarks[16].y > landmarks[14].y;
-    let pinkyClosed  = landmarks[20].y > landmarks[18].y;
-
-    // 四指握拳狀態下
-    if (indexClosed && middleClosed && ringClosed && pinkyClosed) {
-        if (landmarks[4].y < landmarks[2].y) { // 👍 大拇指朝上
-            if (currentDetectedAction === "CONTINUE") actionTimer++;
-            else { currentDetectedAction = "CONTINUE"; actionTimer = 0; }
-        } else if (landmarks[4].y > landmarks[2].y) { // 👎 大拇指朝下
-            if (currentDetectedAction === "QUIT") actionTimer++;
-            else { currentDetectedAction = "QUIT"; actionTimer = 0; }
+// ==========================================
+// 核心邏輯
+// ==========================================
+function handleSimulatedTimer() {
+    if (currentDetectedAction !== "NONE") {
+        actionTimer++;
+        if (actionTimer >= requiredTime) {
+            if (currentDetectedAction === "CONTINUE") {
+                gameState = 'PLAYING';
+                playerChoice = "等待出拳...";
+            } else if (currentDetectedAction === "QUIT") {
+                gameState = 'GAME_OVER';
+            }
+            actionTimer = 0;
+            currentDetectedAction = "NONE";
         }
-    } else {
-        currentDetectedAction = "NONE";
-        actionTimer = 0;
-    }
-
-    // 滿足計時，觸發狀態切換
-    if (actionTimer >= requiredTime) {
-        if (currentDetectedAction === "CONTINUE") {
-            gameState = 'PLAYING';
-            playerChoice = "等待出拳...";
-        } else if (currentDetectedAction === "QUIT") {
-            gameState = 'GAME_OVER';
-        }
-        actionTimer = 0;
-        currentDetectedAction = "NONE";
     }
 }
 
 function executeRPS() {
     computerChoice = random(choices);
-    if (playerChoice === computerChoice) gameResult = "平手！";
-    else if (
+    if (playerChoice === computerChoice) {
+        gameResult = "平手！";
+    } else if (
         (playerChoice === "石頭" && computerChoice === "剪刀") ||
         (playerChoice === "剪刀" && computerChoice === "布") ||
         (playerChoice === "布" && computerChoice === "石頭")
@@ -176,107 +154,73 @@ function executeRPS() {
         gameResult = "你輸了...😢";
     }
     gameState = 'RESULT';
-    actionTimer = 0;
+    actionTimer = 0; 
+    currentDetectedAction = "NONE";
 }
 
 // ==========================================
-// 介面優化與畫布內部排版 (往上移優化)
+// 畫面繪製渲染
 // ==========================================
 function drawPlayingScreen() {
     fill(colorLavender);
     textSize(24);
-    text("⭐ AI 猜拳小遊戲 (實體手勢版) ⭐", width / 2, 50);
+    text("⭐ AI 猜拳小遊戲 ⭐", width / 2, 60);
     
-    // 把原本左下角的提示直接渲染到畫布上半部 (優化排版)
-    fill(255);
+    fill('#ffffff');
     textSize(14);
-    text("請對鏡頭比出： ✊ 石頭 | ✌️ 剪刀 | ✋ 布", width / 2, 110);
+    text("請點擊下方按鈕進行出拳：", width / 2, 130);
     
-    // 渲染三個精美裝飾框取代外部按鈕
-    drawY2KBadge("✊ 石頭", width/2 - 100, 150);
-    drawY2KBadge("✌️ 剪刀", width/2, 150);
-    drawY2KBadge("✋ 布", width/2 + 100, 150);
-
     fill(colorLightBlue);
-    textSize(22);
-    text(`偵測狀態: ${playerChoice}`, width / 2, height / 2 + 60);
+    textSize(20);
+    text(playerChoice, width / 2, height / 2);
 }
 
 function drawResultScreen() {
     fill('#ffffff');
-    textSize(16);
-    text(`你出了: ${playerChoice}  vs  電腦: ${computerChoice}`, width / 2, 50);
+    textSize(15);
+    text(`你出了: ${playerChoice}  vs  電腦: ${computerChoice}`, width / 2, 60);
     
-    textSize(34);
+    textSize(32);
     fill('#ffb703');
-    text(gameResult, width / 2, 110);
+    text(gameResult, width / 2, 120);
 
     fill(colorLavender);
     textSize(16);
-    text("【方案 A 選單控制】", width / 2, 180);
-    
-    // 提示手勢圖示移到上方
-    drawY2KBadge("👍 繼續下一局", width/2 - 90, 230);
-    drawY2KBadge("👎 結束遊戲", width/2 + 90, 230);
+    text("【新手勢選單控制】", width / 2, 190);
+    textSize(12);
+    fill('#ffffff');
+    text("請「長按住」下方按鈕模擬手勢：", width / 2, 220);
 
-    // ⭐ 加分項目：動態進度條
     if (currentDetectedAction !== "NONE" && actionTimer > 0) {
-        let progress = map(actionTimer, 0, requiredTime, 0, 220);
+        let progress = map(actionTimer, 0, requiredTime, 0, 180);
+        
         fill(currentDetectedAction === "CONTINUE" ? '#b5e2fa' : '#ffb3c1');
         textSize(14);
-        text(currentDetectedAction === "CONTINUE" ? "👍 偵測到大拇指朝上..." : "👎 偵測到大拇指朝下...", width / 2, 300);
+        text(currentDetectedAction === "CONTINUE" ? "偵測到 👍 大拇指朝上..." : "偵測到 👎 大拇指朝下...", width / 2, 270);
 
         noFill();
         stroke(colorLavender);
         strokeWeight(2);
-        rect(width / 2 - 110, 330, 220, 14, 7);
+        rect(width / 2 - 90, 295, 180, 14, 7);
         
         noStroke();
         fill(currentDetectedAction === "CONTINUE" ? '#b5e2fa' : '#ffb3c1');
-        rect(width / 2 - 110, 330, progress, 14, 7);
+        rect(width / 2 - 90, 295, progress, 14, 7);
     }
 }
 
 function drawGameOverScreen() {
     fill(colorLavender);
-    textSize(36);
+    textSize(32);
     text("遊戲結束", width / 2, height / 2 - 20);
-    textSize(15);
+    textSize(14);
     fill('#ffffff');
-    text("方案 A 實體手勢改良成功！請關閉網頁。", width / 2, height / 2 + 30);
-}
-
-// 繪製 Y2K 風格的精美裝飾框 (置中上移優化)
-function drawY2KBadge(txt, x, y) {
-    push();
-    rectMode(CENTER);
-    fill(189, 224, 254, 220); // colorLightBlue
-    stroke('#cdb4db');
-    strokeWeight(1.5);
-    rect(x, y, 85, 32, 8);
-    
-    noStroke();
-    fill('#2a1b3d');
-    textSize(12);
-    text(txt, x, y);
-    pop();
-}
-
-function drawHandLandmarks() {
-    if (predictions && predictions.length > 0) {
-        let landmarks = predictions[0];
-        noStroke();
-        fill(colorLightBlue);
-        for (let i = 0; i < landmarks.length; i++) {
-            let x = landmarks[i].x * width;
-            let y = landmarks[i].y * height;
-            ellipse(x, y, 6, 6); // 繪製骨架點
-        }
-    }
+    text("精美 Y2K 介面優化與手勢改良成功！", width / 2, height / 2 + 30);
 }
 
 function windowResized() {
-    let canvasWidth = min(windowWidth - 20, 640);
-    let canvasHeight = min(windowHeight - 40, 480);
+    let canvasWidth = min(windowWidth - 30, 400);
+    let canvasHeight = min(windowHeight - 160, 400);
     resizeCanvas(canvasWidth, canvasHeight);
+    positionButtons();
 }
