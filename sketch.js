@@ -1,109 +1,75 @@
-// ==========================================
-// 全域變數與 MediaPipe 設定
-// ==========================================
-let videoElement;
-let hands;
-let camera;
+let capture;
+let handpose;
 let predictions = [];
 
-let gameState = 'PLAYING'; // 狀態：'PLAYING', 'RESULT', 'GAME_OVER'
-let playerChoice = "等待手勢...";
+let gameState = 'PLAYING'; // 'PLAYING', 'RESULT', 'GAME_OVER'
+let playerChoice = "模型載入中，請稍候...";
 let computerChoice = "";
 let gameResult = "";
 
-// 加分項目：防誤判計時器
+// 考題加分項：防誤判計時器與進度條
 let actionTimer = 0;
-let requiredTime = 40; 
+let requiredTime = 30; 
 let currentDetectedAction = "NONE"; 
 
 const choices = ["石頭", "剪刀", "布"];
 
-// Y2K 夢幻美學色調
+// Y2K 浪漫美學配色
 const colorLavender = '#cdb4db';
 const colorLightBlue = '#bde0fe';
-const colorDarkBg = '#2a1b3d';
 
 function setup() {
-    // 針對手機直式螢幕優化畫布比例
     let canvasWidth = min(windowWidth - 30, 400);
     let canvasHeight = min(windowHeight - 120, 420);
     let canvas = createCanvas(canvasWidth, canvasHeight);
     canvas.parent('canvas-container');
-    
-    videoElement = document.getElementById('webcam');
 
-    // 初始化 MediaPipe Hands 辨識引擎
-    hands = new Hands({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    // 啟動 p5 原生相機並針對手機優化
+    capture = createCapture(VIDEO);
+    capture.size(width, height);
+    capture.hide();
+
+    // 🌟 核心修正：初始化 ml5 的 handpose 模型
+    handpose = ml5.handpose(capture, () => {
+        playerChoice = "等待手勢..."; // 模型載入完成提示
+        console.log("ml5 Handpose Model Loaded!");
     });
 
-    hands.setOptions({
-        maxNumHands: 1,
-        modelComplexity: 1,
-        minDetectionConfidence: 0.7,
-        minTrackingConfidence: 0.5
+    // 監聽偵測結果
+    handpose.on('predict', results => {
+        predictions = results;
     });
-
-    hands.onResults(onHandsResults);
-
-    // 啟動行動端/電腦鏡頭
-    camera = new Camera(videoElement, {
-        onFrame: async () => {
-            await hands.send({ image: videoElement });
-        },
-        width: 400,
-        height: 420
-    });
-    camera.start();
 
     textSize(18);
     textAlign(CENTER, CENTER);
 }
 
 function draw() {
-    // 1. 繪製實體相機影像（並進行鏡像翻轉，操作更直覺）
+    // 繪製相機鏡像
     translate(width, 0);
     scale(-1, 1);
-    image(videoElement, 0, 0, width, height);
+    image(capture, 0, 0, width, height);
     translate(width, 0);
-    scale(-1, 1); // 還原座標系
+    scale(-1, 1); 
 
-    // 2. 疊加 Y2K 濾鏡：半透明浪漫深紫遮罩 + 薰衣草紫網格線
-    fill(42, 27, 61, 180); // 讓背景帶有透明感紫色
+    // Y2K 半透明紫色濾鏡與網格
+    fill(42, 27, 61, 190); 
     rect(0, 0, width, height);
     
-    stroke(205, 180, 219, 30);
+    stroke(205, 180, 219, 35);
     strokeWeight(1);
     for(let i = 0; i < width; i += 25) line(i, 0, i, height);
     for(let j = 0; j < height; j += 25) line(0, j, width, j);
     noStroke();
 
-    // 3. 根據狀態機繪製 UI 畫面
-    if (gameState === 'PLAYING') {
-        drawPlayingScreen();
-    } else if (gameState === 'RESULT') {
-        drawResultScreen();
-    } else if (gameState === 'GAME_OVER') {
-        drawGameOverScreen();
-    }
-
-    // 4. 實時繪製手部綠色特徵追蹤點（視覺回饋加分項）
-    drawHandLandmarks();
-}
-
-// ==========================================
-// MediaPipe AI 手勢辨識回傳結果
-// ==========================================
-function onHandsResults(results) {
-    predictions = results.multiHandLandmarks;
-
-    if (predictions && predictions.length > 0) {
-        let landmarks = predictions[0];
+    // 執行手勢辨識邏輯 (ml5 格式)
+    if (predictions.length > 0) {
+        let landmarks = predictions[0].landmarks; // 取得 21 個特徵點座標 [x, y, z]
 
         if (gameState === 'PLAYING') {
             detectRPS(landmarks);
         } else if (gameState === 'RESULT') {
-            detectThumbAction(landmarks); // 核心考題：判斷 👍 👎
+            detectThumbAction(landmarks); // 核心考題：👍 👎 改良
         }
     } else {
         if (gameState === 'RESULT') {
@@ -111,14 +77,27 @@ function onHandsResults(results) {
             actionTimer = 0;
         }
     }
+
+    // 狀態畫面渲染
+    if (gameState === 'PLAYING') {
+        drawPlayingScreen();
+    } else if (gameState === 'RESULT') {
+        drawResultScreen();
+        handleTimer();
+    } else if (gameState === 'GAME_OVER') {
+        drawGameOverScreen();
+    }
+
+    // 畫出 ml5 的特徵點
+    drawHandLandmarks();
 }
 
-// 辨識剪刀石頭布
+// 辨識剪刀石頭布 (ml5 座標系統中，Index 0是X, 1是Y)
 function detectRPS(landmarks) {
-    let indexOpen = landmarks[8].y < landmarks[6].y;
-    let middleOpen = landmarks[12].y < landmarks[10].y;
-    let ringOpen = landmarks[16].y < landmarks[14].y;
-    let pinkyOpen = landmarks[20].y < landmarks[18].y;
+    let indexOpen  = landmarks[8][1] < landmarks[6][1];
+    let middleOpen = landmarks[12][1] < landmarks[10][1];
+    let ringOpen   = landmarks[16][1] < landmarks[14][1];
+    let pinkyOpen  = landmarks[20][1] < landmarks[18][1];
 
     if (indexOpen && middleOpen && ringOpen && pinkyOpen) {
         playerChoice = "布"; executeRPS();
@@ -129,22 +108,21 @@ function detectRPS(landmarks) {
     }
 }
 
-// 【考題核心修改】：辨識大拇指朝上與朝下
+// 🎯【實作考題核心】：大拇指朝上 👍 / 朝下 👎 觸發機制
 function detectThumbAction(landmarks) {
-    // 確保其餘四指握拳
-    let indexClosed = landmarks[8].y > landmarks[6].y;
-    let middleClosed = landmarks[12].y > landmarks[10].y;
-    let ringClosed = landmarks[16].y > landmarks[14].y;
-    let pinkyClosed = landmarks[20].y > landmarks[18].y;
+    let indexClosed  = landmarks[8][1] > landmarks[6][1];
+    let middleClosed = landmarks[12][1] > landmarks[10][1];
+    let ringClosed   = landmarks[16][1] > landmarks[14][1];
+    let pinkyClosed  = landmarks[20][1] > landmarks[18][1];
 
     if (indexClosed && middleClosed && ringClosed && pinkyClosed) {
-        // 👍 大拇指尖(4)高於關節(2) -> 繼續遊戲
-        if (landmarks[4].y < landmarks[2].y) {
+        // 大拇指尖 landmarks[4] 比 關節 landmarks[2] 高 (Y軸越小越高)
+        if (landmarks[4][1] < landmarks[2][1]) {
             if (currentDetectedAction === "CONTINUE") actionTimer++;
             else { currentDetectedAction = "CONTINUE"; actionTimer = 0; }
         } 
-        // 👎 大拇指尖(4)低於關節(2) -> 結束遊戲
-        else if (landmarks[4].y > landmarks[2].y) {
+        // 大拇指尖低於關節 -> 結束
+        else if (landmarks[4][1] > landmarks[2][1]) {
             if (currentDetectedAction === "QUIT") actionTimer++;
             else { currentDetectedAction = "QUIT"; actionTimer = 0; }
         }
@@ -152,8 +130,9 @@ function detectThumbAction(landmarks) {
         currentDetectedAction = "NONE";
         actionTimer = 0;
     }
+}
 
-    // 撐滿 2 秒（40幀）觸發狀態切換
+function handleTimer() {
     if (actionTimer >= requiredTime) {
         if (currentDetectedAction === "CONTINUE") {
             gameState = 'PLAYING';
@@ -182,9 +161,7 @@ function executeRPS() {
     actionTimer = 0;
 }
 
-// ==========================================
-// 介面渲染 UI Sub-screens
-// ==========================================
+// UI 畫面繪製
 function drawPlayingScreen() {
     fill(colorLavender);
     textSize(24);
@@ -212,7 +189,6 @@ function drawResultScreen() {
     fill('#ffffff');
     text("👍 大拇指朝上：再玩一局\n👎 大拇指朝下：結束遊戲", width / 2, 215);
 
-    // ⭐ 加分項目：進度條視覺回饋
     if (currentDetectedAction !== "NONE" && actionTimer > 0) {
         let progress = map(actionTimer, 0, requiredTime, 0, 180);
         fill(currentDetectedAction === "CONTINUE" ? '#b5e2fa' : '#ffb3c1');
@@ -235,18 +211,16 @@ function drawGameOverScreen() {
     text("遊戲結束", width / 2, height / 2 - 20);
     textSize(14);
     fill('#ffffff');
-    text("實體相機串接與手勢改進成功！", width / 2, height / 2 + 30);
+    text("ml5.js 影像辨識與手勢改進成功！", width / 2, height / 2 + 30);
 }
 
 function drawHandLandmarks() {
-    if (predictions && predictions.length > 0) {
-        let landmarks = predictions[0];
+    if (predictions.length > 0) {
+        let landmarks = predictions[0].landmarks;
         noStroke();
-        fill(189, 224, 254); // 用輕藍色點點標註手部關節
+        fill(189, 224, 254); 
         for (let i = 0; i < landmarks.length; i++) {
-            let x = landmarks[i].x * width;
-            let y = landmarks[i].y * height;
-            ellipse(x, y, 6, 6);
+            ellipse(landmarks[i][0], landmarks[i][1], 6, 6); // ml5 的 x, y
         }
     }
 }

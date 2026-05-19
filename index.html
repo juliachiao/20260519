@@ -3,40 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 猜拳小遊戲 - Y2K 手機實體相機版</title>
+    <title>AI 猜拳小遊戲 - ml5.js 改良版</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
     <style>
         body {
             margin: 0;
             padding: 0;
-            background-color: #2a1b3d; /* Y2K 深紫背景 */
+            background-color: #2a1b3d; /* Y2K 深紫 */
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
-            color: white;
-            font-family: sans-serif;
             overflow: hidden;
+            font-family: sans-serif;
         }
         #canvas-container {
             position: relative;
-            box-shadow: 0 4px 25px rgba(205, 180, 219, 0.4);
+            box-shadow: 0 8px 30px rgba(205, 180, 219, 0.3);
             border-radius: 16px;
             overflow: hidden;
-        }
-        /* 隱藏原始 HTML video 標籤，因為我們要用 p5.js 把它畫得美美的 */
-        #webcam {
-            display: none;
         }
     </style>
 </head>
 <body>
 
-    <div id="canvas-container">
-        <video id="webcam" autoplay playsinline muted></video>
-    </div>
+    <div id="canvas-container"></div>
 
     <script src="sketch.js"></script>
 </body>
